@@ -1,6 +1,5 @@
 import sys
 import os
-import numpy as np
 from .defaultreader import DefaultReader
 
 
@@ -22,7 +21,7 @@ class MeshGroup(object):
 
     @type _material_library_file_path: str
     @type _tmp_material: str
-    @type _face_element: list[(int, int, int)]
+    @type _face_element: list[list[int, int, int]]
     @type _use_material: dict[str, list[int]]
     """
     def __init__(self, material_library_file_path=None):
@@ -45,7 +44,7 @@ class MeshGroup(object):
 
     def parse_f(self, line):
         # todo: parse indexes of texture and normals
-        values = np.array([int(value.split('/')[0]) for value in line.split(' ')])
+        values = [int(value.split('/')[0]) for value in line.split(' ')]
         self._face_element.append(values)
         self._use_material[self._tmp_material].append(len(self._face_element))
 
@@ -70,10 +69,10 @@ class MeshObject(object):
 
     @type _groups: dict[str, MeshGroup]
     @type _tmp_material_library_file_path: str
-    @type _vertices: list[(float, float, float, float)]
-    @type _texture_coordinates: list[(float, float, float)]
-    @type _vertex_normals: list[(float, float, float)]
-    @type _parameter_space_vertices: list[(float, float, float)]
+    @type _vertices: list[list[float, float, float, float]]
+    @type _texture_coordinates: list[list[float, float, float]]
+    @type _vertex_normals: list[list[float, float, float]
+    @type _parameter_space_vertices: list[list[int, int, int]]
     """
     def __init__(self, material_library_file_path=None):
         """
@@ -96,25 +95,44 @@ class MeshObject(object):
         return self._groups[line]
 
     def parse_v(self, line):
-        values = np.array([float(value) for value in line.split(' ')])
+        """
+        @type line: str
+        """
+        values = [float(value) for value in line.split(' ')]
         self._vertices.append(values)
 
     def parse_vt(self, line):
-        values = np.array([float(value) for value in line.split(' ')])
+        """
+        @type line: str
+        """
+        values = [float(value) for value in line.split(' ')]
         self._texture_coordinates.append(values)
 
     def parse_vn(self, line):
-        values = np.array([float(value) for value in line.split(' ')])
+        """
+        @type line: str
+        """
+        values = tuple([float(value) for value in line.split(' ')])
         self._vertex_normals.append(values)
 
     def parse_vp(self, line):
-        values = np.array([int(value) for value in line.split(' ')])
+        """
+        @type line: str
+        """
+        values = [int(value) for value in line.split(' ')]
         self._parameter_space_vertices.append(values)
 
     def parse_mtllib(self, line):
+        """
+        @type line: str
+        """
         self._tmp_material_library_file_path = line
 
     def get_facets(self):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
         for name, group in self._groups.items():
             for facet_element in group:
                 yield (
@@ -203,6 +221,10 @@ class ObjReader(DefaultReader):
         self._tmp_material_library_file_path = line
 
     def get_facets(self, name=None):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
         if name:
             assert name in self._objects, "Unknown object: {}".format(name)
             for facet in self._objects[name].get_facets():
@@ -220,4 +242,7 @@ class ObjReader(DefaultReader):
         repr(self._objects.keys())
 
     def has_triangular_facets(self):
+        """
+        @rtype: bool
+        """
         return all([mesh_object.has_triangular_facets() for name, mesh_object in self._objects.items()])
