@@ -202,10 +202,22 @@ class ObjReader(DefaultReader):
     def parse_mtllib(self, line):
         self._tmp_material_library_file_path = line
 
-    def get_facets(self):
-        for name, mesh_object in self._objects.items():
-            for facet in mesh_object.get_facets():
+    def get_facets(self, name=None):
+        if name:
+            assert name in self._objects, "Unknown object: {}".format(name)
+            for facet in self._objects[name].get_facets():
                 yield facet
+        else:
+            assert name is None, "Unknown object: {}".format(name)
+            for name, mesh_object in self._objects.items():
+                for facet in mesh_object.get_facets():
+                    yield facet
+
+    def get_names(self):
+        """
+        @rtype: collections.Iterable[str]
+        """
+        repr(self._objects.keys())
 
     def has_triangular_facets(self):
         return all([mesh_object.has_triangular_facets() for name, mesh_object in self._objects.items()])
