@@ -32,10 +32,10 @@ class MeshReader(DefaultReader):
         self._reader = self._type_reader[file_extension]()
         self._reader.read(file_path)
 
-    def get_facets(self):
+    def get_facets(self, name=None):
         """
 
-        @rtype: (numpy.ndarray, numpy.ndarray, numpy.ndarray)
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
         """
         return self._reader.get_facets()
 
