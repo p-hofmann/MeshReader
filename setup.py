@@ -5,7 +5,7 @@ from meshlib import __author__ as author
 from meshlib import __version__ as version
 
 setup(
-    name='MeshReader',
+    name='meshlib',
     version=version,
     description='Wrapper of 3D model file format readers',
     author=author,
