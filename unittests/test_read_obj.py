@@ -15,5 +15,9 @@ class ReadTest(unittest.TestCase):
     def test_read(self):
         self.obj.read(self.input)
         facets = list(self.obj.get_facets())
+        texture_facets = list(self.obj.get_texture_facets())
+        normals = list(self.obj.get_normals())
         self.assertGreaterEqual(len(facets), 2)
+        self.assertEqual(len(facets), len(texture_facets))
+        self.assertEqual(len(facets), len(normals))
         self.assertTrue(self.obj.has_triangular_facets())

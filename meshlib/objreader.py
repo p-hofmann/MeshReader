@@ -21,7 +21,9 @@ class MeshGroup(object):
 
     @type _material_library_file_path: str
     @type _tmp_material: str
-    @type _face_element: list[list[int, int, int]]
+    @type _vertex_indices: list[list[int, int, int]]
+    @type _texture_indices: list[list[int, int, int]]
+    @type _normal_indices: list[list[int, int, int]]
     @type _use_material: dict[str, list[int]]
     """
     def __init__(self, material_library_file_path=None):
@@ -30,7 +32,9 @@ class MeshGroup(object):
         """
         self._material_library_file_path = material_library_file_path
         self._tmp_material = None
-        self._face_element = []
+        self._vertex_indices = []
+        self._texture_indices = []
+        self._normal_indices = []
         self._use_material = {None: []}
 
     def __iter__(self):
@@ -39,14 +43,44 @@ class MeshGroup(object):
 
         @rtype:
         """
-        for face_element in self._face_element:
+        for face_element in self._vertex_indices:
             yield face_element
 
+    def items_vertex(self):
+        for element in self._vertex_indices:
+            yield element
+
+    def items_texture(self):
+        for element in self._texture_indices:
+            yield element
+
+    def items_normal(self):
+        for element in self._normal_indices:
+            yield element
+
     def parse_f(self, line):
-        # todo: parse indexes of texture and normals
-        values = [int(value.split('/')[0]) for value in line.split(' ')]
-        self._face_element.append(values)
-        self._use_material[self._tmp_material].append(len(self._face_element))
+        vertex_indice = []
+        texture_indice = []
+        normal_indice = []
+        for entry in line.split(' '):
+            values = entry.split('/')
+            vertex_indice.append(int(values[0]))
+            if len(values) > 1:
+                try:
+                    texture_indice.append(int(values[1]))
+                except ValueError:
+                    pass
+                if len(values) > 2:
+                    try:
+                        normal_indice.append(int(values[2]))
+                    except ValueError:
+                        pass
+        self._vertex_indices.append(vertex_indice)
+        if len(texture_indice):
+            self._texture_indices.append(texture_indice)
+        if len(normal_indice):
+            self._normal_indices.append(normal_indice)
+        self._use_material[self._tmp_material].append(len(self._vertex_indices))
 
     def parse_usemtl(self, line):
         """
@@ -56,9 +90,9 @@ class MeshGroup(object):
         self._use_material[self._tmp_material] = []
 
     def has_triangular_facets(self):
-        if len(self._face_element) == 0:
+        if len(self._vertex_indices) == 0:
             return False
-        return len(self._face_element[0]) == 3
+        return len(self._vertex_indices[0]) == 3
 
 
 class MeshObject(object):
@@ -134,11 +168,35 @@ class MeshObject(object):
         @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
         """
         for name, group in self._groups.items():
-            for facet_element in group:
+            for indice in group.items_vertex():
                 yield (
-                    self._vertices[facet_element[0]-1],
-                    self._vertices[facet_element[1]-1],
-                    self._vertices[facet_element[2]-1])
+                    self._vertices[indice[0]-1],
+                    self._vertices[indice[1]-1],
+                    self._vertices[indice[2]-1])
+
+    def get_texture_facets(self):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
+        for name, group in self._groups.items():
+            for indice in group.items_texture():
+                yield (
+                    self._texture_coordinates[indice[0]-1],
+                    self._texture_coordinates[indice[1]-1],
+                    self._texture_coordinates[indice[2]-1])
+
+    def get_normals(self):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
+        for name, group in self._groups.items():
+            for indice in group.items_normal():
+                yield (
+                    self._vertex_normals[indice[0]-1],
+                    self._vertex_normals[indice[1]-1],
+                    self._vertex_normals[indice[2]-1])
 
     def has_triangular_facets(self):
         return all([group.has_triangular_facets() for name, group in self._groups.items()])
@@ -227,13 +285,43 @@ class ObjReader(DefaultReader):
         """
         if name:
             assert name in self._objects, "Unknown object: {}".format(name)
-            for facet in self._objects[name].get_facets():
-                yield facet
+            for element in self._objects[name].get_facets():
+                yield element
         else:
             assert name is None, "Unknown object: {}".format(name)
             for name, mesh_object in self._objects.items():
-                for facet in mesh_object.get_facets():
-                    yield facet
+                for element in mesh_object.get_facets():
+                    yield element
+
+    def get_texture_facets(self, name=None):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
+        if name:
+            assert name in self._objects, "Unknown object: {}".format(name)
+            for element in self._objects[name].get_texture_facets():
+                yield element
+        else:
+            assert name is None, "Unknown object: {}".format(name)
+            for name, mesh_object in self._objects.items():
+                for element in mesh_object.get_texture_facets():
+                    yield element
+
+    def get_normals(self, name=None):
+        """
+
+        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        """
+        if name:
+            assert name in self._objects, "Unknown object: {}".format(name)
+            for element in self._objects[name].get_normals():
+                yield element
+        else:
+            assert name is None, "Unknown object: {}".format(name)
+            for name, mesh_object in self._objects.items():
+                for element in mesh_object.get_normals():
+                    yield element
 
     def get_names(self):
         """
