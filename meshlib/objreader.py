@@ -1,3 +1,6 @@
+import tempfile
+import zipfile
+import shutil
 import sys
 import os
 from .defaultreader import DefaultReader
@@ -58,6 +61,17 @@ class MeshGroup(object):
         for element in self._normal_indices:
             yield element
 
+    def polygons_to_triangles(self, vertex_indice, texture_indice, normal_indice):
+        for u in range(len(vertex_indice)-2):
+            for v in range(u+1, len(vertex_indice)-1):
+                for w in range(v+1, len(vertex_indice)):
+                    # print(u, v, w)
+                    self._vertex_indices.append([vertex_indice[u], vertex_indice[v], vertex_indice[w]])
+                    if len(texture_indice):
+                        self._texture_indices.append([texture_indice[u], texture_indice[v], texture_indice[w]])
+                    if len(normal_indice):
+                        self._normal_indices.append([normal_indice[u], normal_indice[v], normal_indice[w]])
+
     def parse_f(self, line):
         vertex_indice = []
         texture_indice = []
@@ -75,6 +89,9 @@ class MeshGroup(object):
                         normal_indice.append(int(values[2]))
                     except ValueError:
                         pass
+        if len(vertex_indice) > 3:
+            self.polygons_to_triangles(vertex_indice, texture_indice, normal_indice)
+            return
         self._vertex_indices.append(vertex_indice)
         if len(texture_indice):
             self._texture_indices.append(texture_indice)
@@ -132,7 +149,7 @@ class MeshObject(object):
         """
         @type line: str
         """
-        values = [float(value) for value in line.split(' ')]
+        values = [float(value.strip()) for value in line.split(' ')]
         self._vertices.append(values)
 
     def parse_vt(self, line):
@@ -199,32 +216,49 @@ class MeshObject(object):
                     self._vertex_normals[indice[2]-1])
 
     def has_triangular_facets(self):
-        return all([group.has_triangular_facets() for name, group in self._groups.items()])
+        list_of_lookups = [group.has_triangular_facets() for name, group in self._groups.items()]
+        return all(list_of_lookups)
 
 
 class ObjReader(DefaultReader):
     """
+    @type _tmp_dir: str
     @type _objects: dict[str, MeshObject]
     @type _tmp_material_library_file_path: str
     """
     def __init__(self):
+        self._tmp_dir = None
         self._objects = {}
+        self._directory_textures = None
         self._tmp_material_library_file_path = None
 
+    def __exit__(self, type, value, traceback):
+        if self._tmp_dir and os.path.exists(self._tmp_dir):
+            shutil.rmtree(self._tmp_dir)
+        self.tmp_dir = None
+
+    def __del__(self):
+        if self._tmp_dir and os.path.exists(self._tmp_dir):
+            shutil.rmtree(self._tmp_dir)
+        self.tmp_dir = None
+
     def read(self, file_path):
+        assert os.path.exists(file_path), "Bad file path: '{}'".format(file_path)
         self._objects = {}
         self._tmp_material_library_file_path = None
         current_object = None
         current_group = None
         with open(file_path) as input_stream:
             for line in input_stream:
-                if line.startswith('#'):
+                line = line.rstrip()
+                if line.startswith('#') or not len(line):
                     continue
-                line_split = line.rstrip().split(' ', 1)
+                line_split = line.split(' ', 1)
                 if len(line_split) == 1:
                     sys.stderr.write("[ObjReader] WARNING: Bad line: {}\n".format(line_split[0]))
                     continue
                 key, data = line_split
+                data = data.strip()
                 key = key.lower()
                 if key == 'mtllib':
                     if current_object:
@@ -235,7 +269,7 @@ class ObjReader(DefaultReader):
                 if not current_object and key != 'o':
                     name = os.path.splitext(os.path.basename(file_path))[0]
                     current_object = self.parse_o(name)
-                if not current_group and key != 'g':
+                if not current_group and (key == 'f' or key == 'usemtl'):
                     name = os.path.splitext(os.path.basename(file_path))[0]
                     current_group = current_object.parse_g(name)
                 if key == 'o':
@@ -265,6 +299,52 @@ class ObjReader(DefaultReader):
                 else:
                     sys.stderr.write("[ObjReader] WARNING: Unknown key: {}\n".format(key))
                     continue
+
+    @staticmethod
+    def _get_obj_file_path(directory):
+        list_of_dir = os.listdir(directory)
+        for item in list_of_dir:
+            if item. endswith('obj'):
+                return os.path.join(directory, item)
+        return None
+
+    def read_archive(self, file_path):
+        """
+
+        @param file_path:
+        @return:
+        """
+        # deal with temporary directory
+        self._tmp_dir = tempfile.mkdtemp(prefix="{}_".format("ObjReader"))
+
+        # deal with input directory
+        assert zipfile.is_zipfile(file_path), "Not a zip archive: '{}'".format(file_path)
+        directory_input = tempfile.mkdtemp(dir=self._tmp_dir)
+
+        with zipfile.ZipFile(file_path, "r") as read_handler:
+            read_handler.extractall(directory_input)
+
+        if os.path.exists(os.path.join(directory_input, 'source')):
+            list_of_dir = os.listdir(directory_input)
+            if len(list_of_dir) and list_of_dir[0].endswith(".zip"):
+                #  source contains another zip file, most with likely copies of textures
+                file_path = os.path.join(directory_input, 'source', list_of_dir[0])
+                assert zipfile.is_zipfile(file_path), "Not a zip archive: '{}'".format(file_path)
+                directory_input = tempfile.mkdtemp(dir=self._tmp_dir)
+
+                with zipfile.ZipFile(file_path, "r") as read_handler:
+                    read_handler.extractall(directory_input)
+
+        directory_source = directory_input
+        directory_textures = directory_input
+        if os.path.exists(os.path.join(directory_input, 'source')):
+            directory_source = os.path.join(directory_input, 'source')
+        if os.path.exists(os.path.join(directory_input, 'textures')):
+            directory_textures = os.path.join(directory_input, 'textures')
+        self._directory_textures = directory_textures
+        file_path_obj = ObjReader._get_obj_file_path(directory_source)
+        assert isinstance(file_path_obj, str), "obj file not found."
+        self.read(file_path_obj)
 
     def parse_o(self, line):
         """
@@ -333,4 +413,6 @@ class ObjReader(DefaultReader):
         """
         @rtype: bool
         """
-        return all([mesh_object.has_triangular_facets() for name, mesh_object in self._objects.items()])
+        list_of_lookups = [mesh_object.has_triangular_facets() for name, mesh_object in self._objects.items()]
+        # print(list_of_lookups)
+        return all(list_of_lookups)
