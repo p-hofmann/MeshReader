@@ -3,6 +3,14 @@ class DefaultReader(object):
     Mesh Reader Prototype
     """
 
+    def read_archive(self, file_path):
+        """
+
+        @type file_path: str
+        @rtype: None
+        """
+        pass
+
     def read(self, file_path):
         """
 

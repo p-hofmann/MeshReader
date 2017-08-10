@@ -13,10 +13,26 @@ class MeshReader(DefaultReader):
     _type_reader = {
         ".stl": StlReader,
         ".obj": ObjReader,
+        ".zip": ObjReader,
     }
 
     def __init__(self):
         self._reader = DefaultReader()
+
+    def read_archive(self, file_path):
+        """
+
+        @type file_path: str
+        @rtype: None
+        """
+        # todo: test for stl or obj archive
+        assert os.path.exists(file_path), "Bad file path: {}".format(file_path)
+        assert os.path.isfile(file_path), "Not a file: {}".format(file_path)
+        file_extension = os.path.splitext(os.path.basename(file_path))[1].lower()
+        assert file_extension == ".zip", "Bad file type: {}".format(file_extension)
+        del self._reader
+        self._reader = self._type_reader[file_extension]()
+        self._reader.read_archive(file_path)
 
     def read(self, file_path):
         """
