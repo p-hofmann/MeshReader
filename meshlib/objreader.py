@@ -324,6 +324,12 @@ class ObjReader(DefaultReader):
         with zipfile.ZipFile(file_path, "r") as read_handler:
             read_handler.extractall(directory_input)
 
+        directory_items = os.listdir(directory_input)
+        while len(directory_items) == 1:
+            if os.path.isdir(os.path.join(directory_input, directory_items[0])):
+                directory_input = os.path.join(directory_input, directory_items[0])
+                directory_items = os.listdir(directory_input)
+
         if os.path.exists(os.path.join(directory_input, 'source')):
             list_of_dir = os.listdir(directory_input)
             if len(list_of_dir) and list_of_dir[0].endswith(".zip"):
@@ -334,6 +340,9 @@ class ObjReader(DefaultReader):
 
                 with zipfile.ZipFile(file_path, "r") as read_handler:
                     read_handler.extractall(directory_input)
+
+        if os.path.exists(os.path.join(directory_input, 'lod0')):
+            directory_input = os.path.join(directory_input, 'lod0')
 
         directory_source = directory_input
         directory_textures = directory_input
