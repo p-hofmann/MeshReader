@@ -56,7 +56,7 @@ class Material(object):
     # @type Kd:
     # @type Ks:
     # @type Tf:
-    # @type illum: int
+    # @type illum: int, glass 4, 9  Transparency 6, 7
     @type d: float
     # @type Ns:
     # @type sharpness:
