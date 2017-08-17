@@ -201,9 +201,9 @@ class MeshObject(object):
         for name, group in self._groups.items():
             for indice, material, file_path_material_library in group.items_texture():
                 yield (
-                    self._texture_coordinates[indice[0]-1],
-                    self._texture_coordinates[indice[1]-1],
-                    self._texture_coordinates[indice[2]-1]), material, file_path_material_library
+                    self._texture_coordinates[indice[0]-1][0:2],
+                    self._texture_coordinates[indice[1]-1][0:2],
+                    self._texture_coordinates[indice[2]-1][0:2]), material, file_path_material_library
 
     def get_normals(self):
         """
