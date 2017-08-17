@@ -23,22 +23,22 @@ class MeshGroup(object):
     # usemtl Material__3
 
     @type _material_library_file_path: str
-    @type _tmp_material: str
+    @type _material_name: str
     @type _vertex_indices: list[list[int, int, int]]
     @type _texture_indices: list[list[int, int, int]]
     @type _normal_indices: list[list[int, int, int]]
-    @type _use_material: dict[str, list[int]]
+    @type _use_material: list[str]
     """
     def __init__(self, material_library_file_path=None):
         """
         @type material_library_file_path: str
         """
         self._material_library_file_path = material_library_file_path
-        self._tmp_material = None
+        self._material_name = None
         self._vertex_indices = []
         self._texture_indices = []
         self._normal_indices = []
-        self._use_material = {None: []}
+        self._use_material = []
 
     def __iter__(self):
         """
@@ -54,8 +54,8 @@ class MeshGroup(object):
             yield element
 
     def items_texture(self):
-        for element in self._texture_indices:
-            yield element
+        for index, element in enumerate(self._texture_indices):
+            yield element, self._use_material[index], self._material_library_file_path
 
     def items_normal(self):
         for element in self._normal_indices:
@@ -71,6 +71,7 @@ class MeshGroup(object):
                         self._texture_indices.append([texture_indice[u], texture_indice[v], texture_indice[w]])
                     if len(normal_indice):
                         self._normal_indices.append([normal_indice[u], normal_indice[v], normal_indice[w]])
+                    self._use_material.append(self._material_name)
 
     def parse_f(self, line):
         vertex_indice = []
@@ -97,14 +98,16 @@ class MeshGroup(object):
             self._texture_indices.append(texture_indice)
         if len(normal_indice):
             self._normal_indices.append(normal_indice)
-        self._use_material[self._tmp_material].append(len(self._vertex_indices))
+        self._use_material.append(self._material_name)
+
+    def set_material(self, material_name):
+        self._material_name = material_name
 
     def parse_usemtl(self, line):
         """
         @type line: str
         """
-        self._tmp_material = line
-        self._use_material[self._tmp_material] = []
+        self._material_name = line
 
     def has_triangular_facets(self):
         if len(self._vertex_indices) == 0:
@@ -130,7 +133,6 @@ class MeshObject(object):
         """
         self._groups = {}
         self._tmp_material_library_file_path = material_library_file_path
-        self._tmp_material = None
         self._vertices = []
         self._texture_coordinates = []
         self._vertex_normals = []
@@ -194,14 +196,14 @@ class MeshObject(object):
     def get_texture_facets(self):
         """
 
-        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        @rtype: collections.Iterable[(((float, float, float), (float, float, float), (float, float, float)), str, str)]
         """
         for name, group in self._groups.items():
-            for indice in group.items_texture():
+            for indice, material, file_path_material_library in group.items_texture():
                 yield (
                     self._texture_coordinates[indice[0]-1],
                     self._texture_coordinates[indice[1]-1],
-                    self._texture_coordinates[indice[2]-1])
+                    self._texture_coordinates[indice[2]-1]), material, file_path_material_library
 
     def get_normals(self):
         """
@@ -230,6 +232,7 @@ class ObjReader(DefaultReader):
         self._tmp_dir = None
         self._objects = {}
         self._directory_textures = None
+        self._file_path_obj = None
         self._tmp_material_library_file_path = None
 
     def __exit__(self, type, value, traceback):
@@ -244,7 +247,10 @@ class ObjReader(DefaultReader):
 
     def read(self, file_path):
         assert os.path.exists(file_path), "Bad file path: '{}'".format(file_path)
+        if self._directory_textures is None:
+            self._directory_textures = os.path.dirname(file_path)
         self._objects = {}
+        self._file_path_obj = file_path
         self._tmp_material_library_file_path = None
         current_object = None
         current_group = None
@@ -277,6 +283,7 @@ class ObjReader(DefaultReader):
                     continue
                 if key == 'g':
                     current_group = current_object.parse_g(data)
+                    # current_group.set_material(tmp_material)
                     continue
                 if key == 'v':
                     current_object.parse_v(data)
@@ -365,7 +372,8 @@ class ObjReader(DefaultReader):
         return self._objects[line]
 
     def parse_mtllib(self, line):
-        self._tmp_material_library_file_path = line
+        directory = os.path.dirname(self._file_path_obj)
+        self._tmp_material_library_file_path = os.path.join(directory, line)
 
     def get_facets(self, name=None):
         """
@@ -378,24 +386,26 @@ class ObjReader(DefaultReader):
                 yield element
         else:
             assert name is None, "Unknown object: {}".format(name)
-            for name, mesh_object in self._objects.items():
+            for name in sorted(self._objects.keys()):
+                mesh_object = self._objects[name]
                 for element in mesh_object.get_facets():
                     yield element
 
     def get_texture_facets(self, name=None):
         """
 
-        @rtype: collections.Iterable[((float, float, float), (float, float, float), (float, float, float))]
+        @rtype: collections.Iterable[(((float, float, float), (float, float, float), (float, float, float)), str, str)]
         """
         if name:
             assert name in self._objects, "Unknown object: {}".format(name)
-            for element in self._objects[name].get_texture_facets():
-                yield element
+            for element, material, file_path_material_library in self._objects[name].get_texture_facets():
+                yield element, material, file_path_material_library
         else:
             assert name is None, "Unknown object: {}".format(name)
-            for name, mesh_object in self._objects.items():
-                for element in mesh_object.get_texture_facets():
-                    yield element
+            for name in sorted(self._objects.keys()):
+                mesh_object = self._objects[name]
+                for element, material, file_path_material_library in mesh_object.get_texture_facets():
+                    yield element, material, file_path_material_library
 
     def get_normals(self, name=None):
         """
@@ -408,7 +418,8 @@ class ObjReader(DefaultReader):
                 yield element
         else:
             assert name is None, "Unknown object: {}".format(name)
-            for name, mesh_object in self._objects.items():
+            for name in sorted(self._objects.keys()):
+                mesh_object = self._objects[name]
                 for element in mesh_object.get_normals():
                     yield element
 
@@ -416,7 +427,7 @@ class ObjReader(DefaultReader):
         """
         @rtype: collections.Iterable[str]
         """
-        repr(self._objects.keys())
+        return self._objects.keys()
 
     def has_triangular_facets(self):
         """
@@ -425,3 +436,17 @@ class ObjReader(DefaultReader):
         list_of_lookups = [mesh_object.has_triangular_facets() for name, mesh_object in self._objects.items()]
         # print(list_of_lookups)
         return all(list_of_lookups)
+
+    def get_directory_textures(self):
+        """
+
+        @rtype: str
+        """
+        return self._directory_textures
+
+    def get_file_path(self):
+        """
+
+        @rtype: str
+        """
+        return self._file_path_obj
