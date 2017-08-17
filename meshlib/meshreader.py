@@ -61,3 +61,24 @@ class MeshReader(DefaultReader):
         @rtype: bool
         """
         return self._reader.has_triangular_facets()
+
+    def get_texture_facets(self, name=None):
+        """
+
+        @rtype: collections.Iterable[(((float, float, float), (float, float, float), (float, float, float)), str, str)]
+        """
+        return self._reader.get_texture_facets()
+
+    def get_directory_textures(self):
+        """
+
+        @rtype: str
+        """
+        return self._reader.get_directory_textures()
+
+    def get_file_path(self):
+        """
+
+        @rtype: str
+        """
+        return self._reader.get_file_path()
