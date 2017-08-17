@@ -10,21 +10,22 @@ class Texture(object):
     @type turbulence: (float, float, float)
     """
     def __init__(self):
-        self.file_path = ""
+        self.file_path = None
         self.origin = (0.0, 0.0, 0.0)
         self.stretch = (1.0, 1.0, 1.0)
         self.turbulence = (0.0, 0.0, 0.0)
 
-    def read(self, map_statement):
+    def read(self, map_statement, texture_directory=None):
         """
 
         @type map_statement: str
+        @type texture_directory: str
         """
         tmp = map_statement.rsplit(' ', 1)
         if len(tmp) == 1:
-            self.file_path = tmp[0]
+            file_name = tmp[0]
         else:
-            options, self.file_path = tmp
+            options, file_name = tmp
             while options.startswith('-'):
                 if options.startswith('-o'):
                     key, u, v, w, options = options.split(' ', 4)
@@ -37,6 +38,8 @@ class Texture(object):
                     self.turbulence = (float(u), float(v), float(w))
                 else:
                     key, value, options = options.split(' ', 2)
+        if texture_directory:
+            self.file_path = os.path.join(texture_directory, file_name)
 
     def to_stream(self, stream):
         # stream.write("-o {} ".format(self.origin))
@@ -73,23 +76,27 @@ class Material(object):
     # @type refl:
     """
     def __init__(self):
-        self.d = 1.0
+        self.d = 1.0  # 0: transparent
         self.map_Ka = None
         self.map_Kd = None
 
-    def read(self, statement_lines):
+    def read(self, statement_lines, texture_directory=None):
         """
 
         @type statement_lines: list[str]
+        @type texture_directory: str
         """
         for line in statement_lines:
-            key, data_string = line.split(' ', 1)
+            if ' ' in line:
+                key, data_string = line.split(' ', 1)
+            else:
+                key, data_string = line, None
             if key == 'map_Ka':
                 self.map_Ka = Texture()
-                self.map_Ka.read(data_string)
+                self.map_Ka.read(data_string, texture_directory)
             elif key == 'map_Kd':
                 self.map_Kd = Texture()
-                self.map_Kd.read(data_string)
+                self.map_Kd.read(data_string, texture_directory)
             elif key == 'd':
                 if data_string.startswith('-'):
                     self.d = float(data_string.rsplit(' ', 1)[1])
@@ -101,8 +108,18 @@ class Material(object):
                 else:
                     self.d = 1 - float(data_string)
 
+    def get_texture(self):
+        """
+
+        @rtype: Texture
+        """
+        texture = self.map_Kd or self.map_Ka
+        if texture is None:
+            return None
+        return texture
+
     def to_stream(self, stream):
-        stream.write("  d {} \n".format(self.d))
+        stream.write("  d {}\n".format(self.d))
         if self.map_Ka:
             stream.write("  map_Ka ".format(self.d))
             self.map_Ka.to_stream(stream)
@@ -137,7 +154,7 @@ class MtlReader(object):
             if line.startswith("newmtl"):
                 if statement_lines:
                     self._materials[material_name] = Material()
-                    self._materials[material_name].read(statement_lines)
+                    self._materials[material_name].read(statement_lines, texture_directory)
                 del statement_lines
                 statement_lines = []
                 material_name = line.split(' ', 1)[1]
@@ -146,7 +163,7 @@ class MtlReader(object):
         # read last material
         if statement_lines:
             self._materials[material_name] = Material()
-            self._materials[material_name].read(statement_lines)
+            self._materials[material_name].read(statement_lines, texture_directory)
 
     def search_file(self, file_name_prefix):
         if "EXPORT" in file_name_prefix:
@@ -156,7 +173,8 @@ class MtlReader(object):
             entry = item
             if "EXPORT" in entry:
                 entry = item.split("EXPORT")[0]
-            if entry.startswith(file_name_prefix) and os.path.isfile(os.path.join(self._texture_directory, item)):
+            file_path = os.path.join(self._texture_directory, item)
+            if entry.startswith(file_name_prefix) and os.path.isfile(file_path):
                 results.append(item)
         if len(results) == 1:
             return results[0]
@@ -176,15 +194,19 @@ class MtlReader(object):
                 continue
             if not line.startswith("usemtl"):
                 continue
+            # todo: think of better way of dealing with odd export file material names
             material_name = line.split(' ', 1)[1]
+            if "EXPORT" in material_name:
+                material_name = material_name.split("EXPORT")[0]
             self._materials[material_name] = Material()
             file_name = self.search_file(material_name)
             if file_name is None:
                 success_failure[1] += 1
                 continue
+
             success_failure[0] += 1
             statement_lines = ["map_Ka {}".format(file_name)]
-            self._materials[material_name].read(statement_lines)
+            self._materials[material_name].read(statement_lines, self._texture_directory)
         return success_failure
 
     def read(self, file_path, texture_directory=None):
@@ -198,6 +220,7 @@ class MtlReader(object):
         if texture_directory is None:
             texture_directory = os.path.dirname(file_path)
         success_failure = None
+        # print(file_path)
         with open(file_path) as input_stream:
             if file_path.lower().endswith('.mtl'):
                 self.read_stream(input_stream, texture_directory)
@@ -205,16 +228,36 @@ class MtlReader(object):
                 success_failure = self.reconstruct_mtl(input_stream, texture_directory)
         return success_failure
 
+    def get_material(self, material_name):
+        """
+
+        @rtype: Material
+        """
+        if material_name not in self._materials:
+            return None
+        return self._materials[material_name]
+
     def validate_textures(self):
+        """
+
+        @rtype: bool
+        """
         for material_name, material in self._materials.items():
-            file_path = os.path.join(self._texture_directory, material.map_Ka.file_path)
+            texture = material.get_texture()
+            if texture is None:
+                continue
+            file_path = texture.file_path
+            if file_path is None:
+                continue
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
                 return False
         return True
 
-    def to_stream(self, stream):
+    def to_stream(self, stream=None):
+        if stream is None:
+            stream = sys.stdout
         for material_name, material in self._materials.items():
-            stream.write("newmtl {} \n".format(material_name))
+            stream.write("newmtl {}\n".format(material_name))
             material.to_stream(stream)
 
     def to_stdout(self):
